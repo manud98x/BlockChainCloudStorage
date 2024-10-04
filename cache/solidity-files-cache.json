@@ -1,0 +1,40 @@
+{
+  "_format": "hh-sol-cache-2",
+  "files": {
+    "E:\\Academic\\Masters\\Year 1\\Semester 4\\Emerging Topics in Cyber Security\\Assignment\\contracts\\FileSharing.sol": {
+      "lastModificationDate": 1728042686934,
+      "contentHash": "962dede4710a0597d0be1d8e558924fb",
+      "sourceName": "contracts/FileSharing.sol",
+      "solcConfig": {
+        "version": "0.8.0",
+        "settings": {
+          "optimizer": {
+            "enabled": false,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.0"
+      ],
+      "artifacts": [
+        "FileSharing"
+      ]
+    }
+  }
+}
