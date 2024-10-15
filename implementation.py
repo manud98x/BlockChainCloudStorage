@@ -157,17 +157,19 @@ def revoke_file_access(file_id):
         # Convert the file ID to bytes32 if necessary
         file_id_bytes32 = Web3.to_bytes(hexstr=file_id)
 
-        # Get the current nonce and gas price (increase the gas price to speed up the transaction)
+        # Get the current nonce (use the same nonce as the previous transaction)
         nonce = w3.eth.get_transaction_count(account.address)
-        gas_price = w3.eth.to_wei('30', 'gwei')  # Correct method to convert Gwei to Wei
+        
+        # Increase the gas price by 20% to ensure it replaces the previous transaction
+        gas_price = w3.eth.gas_price * 1.2
 
-        print(f"Nonce: {nonce}, Gas price: {gas_price} wei")
+        print(f"Nonce: {nonce}, Gas price: {gas_price} wei (increased to replace previous transaction)")
 
         # Build the transaction to revoke access to the file
         tx = contract.functions.revokeAccess(account.address, file_id_bytes32).build_transaction({
             'from': account.address,
-            'gas': 3000000,  # Increased gas limit (adjust as needed)
-            'gasPrice': gas_price,
+            'gas': 3000000,
+            'gasPrice': int(gas_price),  # Ensure gas price is an integer
             'nonce': nonce,
             'chainId': w3.eth.chain_id  # Sepolia's chain ID (11155111)
         })
