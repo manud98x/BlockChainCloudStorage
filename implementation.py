@@ -1,53 +1,49 @@
 import os
 import tkinter as tk
-from tkinter import filedialog, Listbox, messagebox
+from tkinter import filedialog, Listbox, messagebox, simpledialog
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from ecdsa import SigningKey, SECP256k1
 from web3 import Web3
 from eth_account import Account
-from eth_utils import keccak, to_bytes
+from eth_utils import keccak
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.Random import get_random_bytes
 
-# Alchemy Sepolia endpoint
-alchemy_url = "https://eth-sepolia.g.alchemy.com/v2/QkX3a5mEbFcJgXQqQ-8RkcT3jV7wqOhJ"
-w3 = Web3(Web3.HTTPProvider(alchemy_url))
+# BuildBear endpoint (Replace with your BuildBear RPC URL)
+buildbear_rpc_url = "https://rpc.buildbear.io/indirect-doctoroctopus-a938176d"
+w3 = Web3(Web3.HTTPProvider(buildbear_rpc_url))
 
-# Check connection to Sepolia
+# Check connection to BuildBear
 if w3.is_connected():
-    print("Connected to Sepolia Testnet")
+    print("Connected to BuildBear Custom Network")
 else:
-    raise ConnectionError("Failed to connect to Sepolia Testnet")
+    raise ConnectionError("Failed to connect to BuildBear Custom Network")
 
-# Smart contract address and ABI
-contract_address = Web3.to_checksum_address("0x7da26dc83cc86bacad8c72fdc7e5f17536ce2de9")
-
-# Replace with the correct ABI you provided
+# Smart contract address and ABI (based on provided ABI)
+contract_address = Web3.to_checksum_address("0x199b32ef843d489c48f396e60f96a77b5a0bd397")
 contract_abi = [
     {"inputs":[],"stateMutability":"nonpayable","type":"constructor"},
     {"anonymous":False,"inputs":[{"indexed":True,"internalType":"bytes32","name":"fileId","type":"bytes32"},{"indexed":True,"internalType":"address","name":"user","type":"address"}],"name":"AccessGranted","type":"event"},
     {"anonymous":False,"inputs":[{"indexed":True,"internalType":"bytes32","name":"fileId","type":"bytes32"},{"indexed":True,"internalType":"address","name":"user","type":"address"}],"name":"AccessRevoked","type":"event"},
+    {"anonymous":False,"inputs":[{"indexed":True,"internalType":"bytes32","name":"fileId","type":"bytes32"},{"indexed":True,"internalType":"address","name":"recipient","type":"address"},{"indexed":False,"internalType":"string","name":"encryptedKey","type":"string"}],"name":"EncryptionKeyShared","type":"event"},
     {"anonymous":False,"inputs":[{"indexed":True,"internalType":"bytes32","name":"fileId","type":"bytes32"},{"indexed":True,"internalType":"address","name":"user","type":"address"}],"name":"FileDownloaded","type":"event"},
     {"anonymous":False,"inputs":[{"indexed":True,"internalType":"bytes32","name":"fileId","type":"bytes32"},{"indexed":True,"internalType":"address","name":"uploader","type":"address"},{"indexed":False,"internalType":"string","name":"fileName","type":"string"}],"name":"FileUploaded","type":"event"},
     {"inputs":[{"internalType":"address","name":"user","type":"address"},{"internalType":"bytes32","name":"fileId","type":"bytes32"}],"name":"canAccess","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
-    {"inputs":[{"internalType":"bytes32","name":"fileId","type":"bytes32"}],"name":"downloadFile","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"internalType":"bytes32","name":"fileId","type":"bytes32"}],"name":"downloadFile","outputs":[{"internalType":"string","name":"fileHash","type":"string"},{"internalType":"string","name":"encryptedKey","type":"string"}],"stateMutability":"nonpayable","type":"function"},
     {"inputs":[],"name":"getUploadedFiles","outputs":[{"internalType":"bytes32[]","name":"","type":"bytes32[]"}],"stateMutability":"view","type":"function"},
     {"inputs":[{"internalType":"address","name":"user","type":"address"},{"internalType":"bytes32","name":"fileId","type":"bytes32"}],"name":"grantAccess","outputs":[],"stateMutability":"nonpayable","type":"function"},
     {"inputs":[{"internalType":"bytes32","name":"fileId","type":"bytes32"}],"name":"isFileUploaded","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
     {"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
     {"inputs":[{"internalType":"address","name":"user","type":"address"},{"internalType":"bytes32","name":"fileId","type":"bytes32"}],"name":"revokeAccess","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"internalType":"bytes32","name":"fileId","type":"bytes32"},{"internalType":"address","name":"recipient","type":"address"},{"internalType":"string","name":"encryptedKey","type":"string"}],"name":"shareEncryptionKey","outputs":[],"stateMutability":"nonpayable","type":"function"},
     {"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},
-    {"inputs":[{"internalType":"bytes32","name":"fileId","type":"bytes32"},{"internalType":"string","name":"fileHash","type":"string"},{"internalType":"string","name":"fileName","type":"string"}],"name":"uploadFile","outputs":[],"stateMutability":"nonpayable","type":"function"}
+    {"inputs":[{"internalType":"bytes32","name":"fileId","type":"bytes32"},{"internalType":"string","name":"fileHash","type":"string"},{"internalType":"string","name":"fileName","type":"string"},{"internalType":"string","name":"encryptedKey","type":"string"}],"name":"uploadFile","outputs":[],"stateMutability":"nonpayable","type":"function"}
 ]
 
 # Access contract using the checksum address and correct ABI
 contract = w3.eth.contract(address=contract_address, abi=contract_abi)
-
-# Use your Sepolia account's private key
-private_key = "ef86c9aed631ef25ad290c977899a7dde92c0b365acfbd589caa2ed3ac44795b"  # Replace with your private key
-account = Account.from_key(private_key)
-
-# Log account information
-print(f"Using account: {account.address}")
 
 # Directories to store the encrypted files and signatures
 ENCRYPTED_FILES_DIR = "encrypted_files"
@@ -58,6 +54,22 @@ if not os.path.exists(ENCRYPTED_FILES_DIR):
     os.makedirs(ENCRYPTED_FILES_DIR)
 if not os.path.exists(SIGNATURE_FILES_DIR):
     os.makedirs(SIGNATURE_FILES_DIR)
+
+# Login Dialog to Enter Private Key
+class LoginDialog(simpledialog.Dialog):
+    def body(self, master):
+        tk.Label(master, text="Enter Private Key:").grid(row=0)
+        self.private_key_entry = tk.Entry(master, show="*")  # Mask the private key
+        self.private_key_entry.grid(row=0, column=1)
+        return self.private_key_entry
+
+    def apply(self):
+        self.private_key = self.private_key_entry.get()
+
+# Prompt login dialog
+def prompt_login():
+    login = LoginDialog(window)
+    return login.private_key
 
 # AES Encryption Function
 def encrypt_file(file_path, key):
@@ -70,7 +82,6 @@ def encrypt_file(file_path, key):
             plaintext = f.read()
         
         ciphertext = encryptor.update(plaintext) + encryptor.finalize()
-        print(f"File {file_path} encrypted successfully.")
         return iv + ciphertext
     except Exception as e:
         print(f"Encryption failed: {e}")
@@ -85,7 +96,6 @@ def decrypt_file(encrypted_data, key):
         cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
         decryptor = cipher.decryptor()
         decrypted_data = decryptor.update(ciphertext) + decryptor.finalize()
-        print("Decryption successful.")
         return decrypted_data
     except Exception as e:
         print(f"Decryption failed: {e}")
@@ -99,15 +109,21 @@ def sign_file(file_path, private_key, key):
         
         sk = SigningKey.from_string(private_key, curve=SECP256k1)
         signature = sk.sign(file_content)
-        print(f"File {file_path} signed successfully.")
         return signature + key  # Append the key to the signature
     except Exception as e:
         print(f"File signing failed: {e}")
         return None
 
-# Convert string to bytes32
-def str_to_bytes32(text):
-    return Web3.toBytes(text.encode('utf-8')).ljust(32, b'\0')[:32]
+# RSA Encryption for Key Sharing
+def encrypt_key_for_recipient(public_key_str, key):
+    try:
+        public_key = RSA.import_key(public_key_str)
+        cipher_rsa = PKCS1_OAEP.new(public_key)
+        encrypted_key = cipher_rsa.encrypt(key)
+        return encrypted_key
+    except Exception as e:
+        print(f"Key encryption failed: {e}")
+        return None
 
 # Function to send a transaction
 def send_transaction(tx):
@@ -115,7 +131,7 @@ def send_transaction(tx):
         tx['nonce'] = w3.eth.get_transaction_count(account.address)
         tx['gasPrice'] = w3.eth.gas_price
         signed_tx = w3.eth.account.sign_transaction(tx, private_key)
-        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
         receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
         print(f"Transaction successful with hash: {tx_hash.hex()}")
         return receipt
@@ -124,24 +140,22 @@ def send_transaction(tx):
         return None
 
 # Function to upload file and its metadata to blockchain
-def upload_file_to_blockchain(file_id, file_hash, file_name):
+def upload_file_to_blockchain(file_id_hex, file_hash, file_name, encrypted_key):
     try:
+        file_id_bytes32 = Web3.to_bytes(hexstr=file_id_hex)
         nonce = w3.eth.get_transaction_count(account.address)
         gas_price = w3.eth.gas_price
-        file_id_bytes32 = Web3.to_bytes(hexstr=keccak(file_name.encode('utf-8')).hex())
 
-        print(f"Uploading file with file_id: {file_id_bytes32} and file_hash: {file_hash}")
-
-        tx = contract.functions.uploadFile(file_id_bytes32, file_hash, file_name).build_transaction({
+        tx = contract.functions.uploadFile(file_id_bytes32, file_hash, file_name, encrypted_key).build_transaction({
             'from': account.address,
-            'gas': 3000000,
+            'gas': 1000000,
             'gasPrice': gas_price,
             'nonce': nonce,
             'chainId': w3.eth.chain_id
         })
 
         signed_tx = w3.eth.account.sign_transaction(tx, private_key)
-        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
 
         receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
         if receipt:
@@ -151,52 +165,115 @@ def upload_file_to_blockchain(file_id, file_hash, file_name):
         print(f"Error uploading file: {e}")
     return False
 
+# Function to grant access
+def grant_access():
+    selected_file = uploaded_files_list.get(tk.ACTIVE)
+    if not selected_file:
+        messagebox.showwarning("No File Selected", "Please select a file to grant access.")
+        return
 
-def revoke_file_access(file_id):
+    recipient_address = simpledialog.askstring("Grant Access", "Enter Recipient Address:")
+    if recipient_address:
+        file_id_hex = selected_file.split("File ID: ")[1]
+        try:
+            # Check if the user is the owner before granting access
+            if not contract.functions.owner().call() == account.address:
+                messagebox.showerror("Error", "Only the owner can grant access to the file!")
+                return
+
+            tx = contract.functions.grantAccess(recipient_address, bytes.fromhex(file_id_hex)).build_transaction({
+                'from': account.address,
+                'gas': 300000,
+                'gasPrice': w3.eth.gas_price,
+                'nonce': w3.eth.get_transaction_count(account.address),
+                'chainId': w3.eth.chain_id
+            })
+            receipt = send_transaction(tx)
+            if receipt:
+                print(f"Access granted for file {file_id_hex} to {recipient_address}")
+                messagebox.showinfo("Success", "Access granted successfully!")
+        except Exception as e:
+            print(f"Grant access failed: {e}")
+            messagebox.showerror("Error", f"Grant access failed: {e}")
+
+# Function to revoke access
+def revoke_access():
+    selected_file = uploaded_files_list.get(tk.ACTIVE)
+    if not selected_file:
+        messagebox.showwarning("No File Selected", "Please select a file to revoke access.")
+        return
+
+    recipient_address = simpledialog.askstring("Revoke Access", "Enter Recipient Address:")
+    if recipient_address:
+        file_id_hex = selected_file.split("File ID: ")[1]
+        try:
+            # Check if the user is the owner before revoking access
+            if not contract.functions.owner().call() == account.address:
+                messagebox.showerror("Error", "Only the owner can revoke access to the file!")
+                return
+
+            tx = contract.functions.revokeAccess(recipient_address, bytes.fromhex(file_id_hex)).build_transaction({
+                'from': account.address,
+                'gas': 300000,
+                'gasPrice': w3.eth.gas_price,
+                'nonce': w3.eth.get_transaction_count(account.address),
+                'chainId': w3.eth.chain_id
+            })
+            receipt = send_transaction(tx)
+            if receipt:
+                print(f"Access revoked for file {file_id_hex} from {recipient_address}")
+                messagebox.showinfo("Success", "Access revoked successfully!")
+        except Exception as e:
+            print(f"Revoke access failed: {e}")
+            messagebox.showerror("Error", f"Revoke access failed: {e}")
+
+# Function to download a file
+def download_file():
+    selected_file = uploaded_files_list.get(tk.ACTIVE)
+    if not selected_file:
+        messagebox.showwarning("No File Selected", "Please select a file to download.")
+        return
+
+    file_id_hex = selected_file.split("File ID: ")[1]
     try:
-        # Convert the file ID to bytes32 if necessary
-        file_id_bytes32 = Web3.to_bytes(hexstr=file_id)
+        # Check if the user has access to the file before downloading
+        can_access = contract.functions.canAccess(account.address, bytes.fromhex(file_id_hex)).call()
+        if not can_access:
+            messagebox.showerror("Error", "You do not have access to this file!")
+            return
 
-        # Get the current nonce (use the same nonce as the previous transaction)
-        nonce = w3.eth.get_transaction_count(account.address)
-        
-        # Increase the gas price by 20% to ensure it replaces the previous transaction
-        gas_price = w3.eth.gas_price * 1.2
+        file_hash, encrypted_key = contract.functions.downloadFile(bytes.fromhex(file_id_hex)).call({'from': account.address})
 
-        print(f"Nonce: {nonce}, Gas price: {gas_price} wei (increased to replace previous transaction)")
+        # Decrypt the file and save it
+        encrypted_file_path = os.path.join(ENCRYPTED_FILES_DIR, f"encrypted_{file_id_hex}")
+        if not os.path.exists(encrypted_file_path):
+            raise FileNotFoundError(f"No such file: {encrypted_file_path}")
 
-        # Build the transaction to revoke access to the file
-        tx = contract.functions.revokeAccess(account.address, file_id_bytes32).build_transaction({
-            'from': account.address,
-            'gas': 3000000,
-            'gasPrice': int(gas_price),  # Ensure gas price is an integer
-            'nonce': nonce,
-            'chainId': w3.eth.chain_id  # Sepolia's chain ID (11155111)
-        })
+        decrypted_file_path = filedialog.asksaveasfilename(title="Save Decrypted File")
+        if not decrypted_file_path:
+            return
 
-        # Sign and send the transaction
-        signed_tx = w3.eth.account.sign_transaction(tx, private_key)
-        tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        with open(encrypted_file_path, 'rb') as f:
+            encrypted_data = f.read()
 
-        print(f"Transaction sent. Tx hash: {tx_hash.hex()}")
+        decrypted_data = decrypt_file(encrypted_data, bytes.fromhex(encrypted_key))
 
-        # Wait for the transaction receipt
-        receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=300)  # Increase timeout to 300 seconds
-        if receipt:
-            print(f"File access revoked successfully. Transaction hash: {receipt.transactionHash.hex()}")
-            return True
+        if decrypted_data:
+            with open(decrypted_file_path, 'wb') as f:
+                f.write(decrypted_data)
+            messagebox.showinfo("Success", f"File downloaded and saved to {decrypted_file_path}")
+        else:
+            messagebox.showerror("Error", "Decryption failed.")
     except Exception as e:
-        print(f"Error revoking access: {e}")
-    return False
+        print(f"Download failed: {e}")
+        messagebox.showerror("Error", f"Download failed: {e}")
 
-
-
-# Encrypt and Upload File Action
+# Function to encrypt and upload the file
 def encrypt_and_upload_file():
     file_path = filedialog.askopenfilename()
     if file_path:
         try:
-            key = os.urandom(32)
+            key = os.urandom(32)  # AES 256-bit key
             encrypted_data = encrypt_file(file_path, key)
             
             if encrypted_data is None:
@@ -208,8 +285,8 @@ def encrypt_and_upload_file():
             encrypted_file_path = os.path.join(ENCRYPTED_FILES_DIR, encrypted_file_name)
             with open(encrypted_file_path, 'wb') as f:
                 f.write(encrypted_data)
-            print(f"Encrypted file saved at {encrypted_file_path}")
 
+            # Generate signature
             private_key = SigningKey.generate(curve=SECP256k1).to_string()
             signature = sign_file(file_path, private_key, key)
             
@@ -220,12 +297,11 @@ def encrypt_and_upload_file():
             signature_file_path = os.path.join(SIGNATURE_FILES_DIR, encrypted_file_name + ".sig")
             with open(signature_file_path, 'wb') as f:
                 f.write(signature)
-            print(f"Signature saved at {signature_file_path}")
 
             file_hash = keccak(encrypted_file_path.encode('utf-8')).hex()
-            file_id_bytes32 = to_bytes(file_id)
+            encrypted_key = key.hex()
 
-            if upload_file_to_blockchain(file_id_bytes32, file_hash, os.path.basename(file_path)):
+            if upload_file_to_blockchain(file_id.hex(), file_hash, os.path.basename(file_path), encrypted_key):
                 status_label.config(text=f"File {file_path} encrypted and uploaded successfully")
                 display_uploaded_files()
             else:
@@ -248,106 +324,49 @@ def display_uploaded_files():
         print(f"Error fetching uploaded files: {e}")
         uploaded_files_list.insert(tk.END, "Error fetching uploaded files.")
 
-# Delete a file from local storage and revoke access on the blockchain
-def delete_file():
-    selected_file = uploaded_files_list.get(tk.ACTIVE)
-    if not selected_file:
-        messagebox.showwarning("No File Selected", "Please select a file to delete.")
-        return
-
-    file_id_hex = selected_file.split("File ID: ")[1]
-    encrypted_file_name = f"encrypted_{file_id_hex}"
-    encrypted_file_path = os.path.join(ENCRYPTED_FILES_DIR, encrypted_file_name)
-    signature_file_path = os.path.join(SIGNATURE_FILES_DIR, encrypted_file_name + ".sig")
-
-    try:
-        # Step 1: Revoke file access on the blockchain
-        if revoke_file_access(file_id_hex):
-            print(f"Access revoked for file ID: {file_id_hex}")
-
-            # Step 2: Delete the file and signature locally
-            if os.path.exists(encrypted_file_path):
-                os.remove(encrypted_file_path)
-                print(f"Deleted encrypted file: {encrypted_file_path}")
-            else:
-                print(f"Encrypted file not found: {encrypted_file_path}")
-
-            if os.path.exists(signature_file_path):
-                os.remove(signature_file_path)
-                print(f"Deleted signature file: {signature_file_path}")
-            else:
-                print(f"Signature file not found: {signature_file_path}")
-
-            uploaded_files_list.delete(tk.ACTIVE)
-            status_label.config(text="File and signature deleted successfully")
-        else:
-            status_label.config(text="Failed to revoke access on blockchain")
-    except Exception as e:
-        print(f"Error deleting file: {e}")
-        status_label.config(text="Error deleting file")
-
-# Download a file from the blockchain
-def download_file():
-    selected_file = uploaded_files_list.get(tk.ACTIVE)
-    if not selected_file:
-        messagebox.showwarning("No File Selected", "Please select a file to download.")
-        return
-
-    file_id_hex = selected_file.split("File ID: ")[1]
-    file_id_bytes32 = bytes.fromhex(file_id_hex)
-
-    try:
-        file_hash = contract.functions.downloadFile(file_id_bytes32).call({'from': account.address})
-        encrypted_file_name = f"encrypted_{file_id_hex}"
-        encrypted_file_path = os.path.join(ENCRYPTED_FILES_DIR, encrypted_file_name)
-
-        if not os.path.exists(encrypted_file_path):
-            raise FileNotFoundError(f"No such file: '{encrypted_file_path}'")
-
-        save_path = filedialog.asksaveasfilename(title="Save Decrypted File")
-        if not save_path:
-            return
-
-        signature_file_path = os.path.join(SIGNATURE_FILES_DIR, encrypted_file_name + ".sig")
-        with open(signature_file_path, 'rb') as f:
-            signature_and_key = f.read()
-            key = signature_and_key[-32:]
-
-        with open(encrypted_file_path, 'rb') as f:
-            encrypted_data = f.read()
-
-        decrypted_data = decrypt_file(encrypted_data, key)
-
-        if decrypted_data:
-            with open(save_path, 'wb') as f:
-                f.write(decrypted_data)
-            status_label.config(text=f"File downloaded and saved to {save_path}")
-        else:
-            status_label.config(text="Error during decryption")
-    except Exception as e:
-        print(f"Error downloading file: {e}")
-        status_label.config(text="Error downloading the file")
-
 # Create tkinter window
 window = tk.Tk()
 window.title("Secure File Sharing System")
+window.geometry("600x400")  # Set the window size
+
+# Prompt user to enter their private key
+private_key = prompt_login()
+
+# If the user didn't provide a key, exit the application
+if not private_key:
+    messagebox.showerror("Error", "Private key is required to login!")
+    window.destroy()
+else:
+    try:
+        account = Account.from_key(private_key)
+        print(f"Using account: {account.address}")
+    except Exception as e:
+        messagebox.showerror("Error", f"Invalid Private Key: {e}")
+        window.destroy()
+
+# Frame for buttons
+button_frame = tk.Frame(window)
+button_frame.pack(pady=20)
 
 # Add buttons and labels
-encrypt_button = tk.Button(window, text="Encrypt and Upload File", command=encrypt_and_upload_file)
-encrypt_button.pack()
+encrypt_button = tk.Button(button_frame, text="Encrypt and Upload File", width=25, command=encrypt_and_upload_file)
+encrypt_button.grid(row=0, column=0, padx=10)
 
-download_button = tk.Button(window, text="Download Selected File", command=download_file)
-download_button.pack()
+download_button = tk.Button(button_frame, text="Download File", width=25, command=download_file)
+download_button.grid(row=0, column=1, padx=10)
 
-delete_button = tk.Button(window, text="Delete Selected File", command=delete_file)
-delete_button.pack()
+grant_button = tk.Button(button_frame, text="Grant Access", width=25, command=grant_access)
+grant_button.grid(row=1, column=0, padx=10, pady=10)
 
-status_label = tk.Label(window, text="")
-status_label.pack()
+revoke_button = tk.Button(button_frame, text="Revoke Access", width=25, command=revoke_access)
+revoke_button.grid(row=1, column=1, padx=10, pady=10)
+
+status_label = tk.Label(window, text="", font=("Arial", 12))
+status_label.pack(pady=10)
 
 # Add a listbox to show uploaded files
-uploaded_files_list = Listbox(window, height=10, width=50)
-uploaded_files_list.pack()
+uploaded_files_list = Listbox(window, height=10, width=80)
+uploaded_files_list.pack(pady=10)
 
 # Initially load the uploaded files when the program starts
 display_uploaded_files()
