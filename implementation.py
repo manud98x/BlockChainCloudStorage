@@ -17,7 +17,7 @@ w3 = Web3(Web3.HTTPProvider(buildbear_rpc_url))
 
 # Check connection to BuildBear
 if w3.is_connected():
-    print("Connected to BuildBear Custom Network")
+    print("Connected to BuildBear Custom Network!")
 else:
     raise ConnectionError("Failed to connect to BuildBear Custom Network")
 
