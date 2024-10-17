@@ -1,6 +1,8 @@
 import os
 import tkinter as tk
-from tkinter import filedialog, Listbox, messagebox, simpledialog
+import tkinter.ttk as ttk
+import json
+from tkinter import filedialog, messagebox, simpledialog
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from ecdsa import SigningKey, SECP256k1
@@ -15,6 +17,10 @@ from Crypto.Random import get_random_bytes
 buildbear_rpc_url = "https://rpc.buildbear.io/indirect-doctoroctopus-a938176d"
 w3 = Web3(Web3.HTTPProvider(buildbear_rpc_url))
 
+def load_abi(file_path):
+    with open(file_path, 'r') as abi_file:
+        return json.load(abi_file)
+
 # Check connection to BuildBear
 if w3.is_connected():
     print("Connected to BuildBear Custom Network!")
@@ -22,26 +28,8 @@ else:
     raise ConnectionError("Failed to connect to BuildBear Custom Network")
 
 # Smart contract address and ABI (based on provided ABI)
-contract_address = Web3.to_checksum_address("0x199b32ef843d489c48f396e60f96a77b5a0bd397")
-contract_abi = [
-    {"inputs":[],"stateMutability":"nonpayable","type":"constructor"},
-    {"anonymous":False,"inputs":[{"indexed":True,"internalType":"bytes32","name":"fileId","type":"bytes32"},{"indexed":True,"internalType":"address","name":"user","type":"address"}],"name":"AccessGranted","type":"event"},
-    {"anonymous":False,"inputs":[{"indexed":True,"internalType":"bytes32","name":"fileId","type":"bytes32"},{"indexed":True,"internalType":"address","name":"user","type":"address"}],"name":"AccessRevoked","type":"event"},
-    {"anonymous":False,"inputs":[{"indexed":True,"internalType":"bytes32","name":"fileId","type":"bytes32"},{"indexed":True,"internalType":"address","name":"recipient","type":"address"},{"indexed":False,"internalType":"string","name":"encryptedKey","type":"string"}],"name":"EncryptionKeyShared","type":"event"},
-    {"anonymous":False,"inputs":[{"indexed":True,"internalType":"bytes32","name":"fileId","type":"bytes32"},{"indexed":True,"internalType":"address","name":"user","type":"address"}],"name":"FileDownloaded","type":"event"},
-    {"anonymous":False,"inputs":[{"indexed":True,"internalType":"bytes32","name":"fileId","type":"bytes32"},{"indexed":True,"internalType":"address","name":"uploader","type":"address"},{"indexed":False,"internalType":"string","name":"fileName","type":"string"}],"name":"FileUploaded","type":"event"},
-    {"inputs":[{"internalType":"address","name":"user","type":"address"},{"internalType":"bytes32","name":"fileId","type":"bytes32"}],"name":"canAccess","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
-    {"inputs":[{"internalType":"bytes32","name":"fileId","type":"bytes32"}],"name":"downloadFile","outputs":[{"internalType":"string","name":"fileHash","type":"string"},{"internalType":"string","name":"encryptedKey","type":"string"}],"stateMutability":"nonpayable","type":"function"},
-    {"inputs":[],"name":"getUploadedFiles","outputs":[{"internalType":"bytes32[]","name":"","type":"bytes32[]"}],"stateMutability":"view","type":"function"},
-    {"inputs":[{"internalType":"address","name":"user","type":"address"},{"internalType":"bytes32","name":"fileId","type":"bytes32"}],"name":"grantAccess","outputs":[],"stateMutability":"nonpayable","type":"function"},
-    {"inputs":[{"internalType":"bytes32","name":"fileId","type":"bytes32"}],"name":"isFileUploaded","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
-    {"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
-    {"inputs":[{"internalType":"address","name":"user","type":"address"},{"internalType":"bytes32","name":"fileId","type":"bytes32"}],"name":"revokeAccess","outputs":[],"stateMutability":"nonpayable","type":"function"},
-    {"inputs":[{"internalType":"bytes32","name":"fileId","type":"bytes32"},{"internalType":"address","name":"recipient","type":"address"},{"internalType":"string","name":"encryptedKey","type":"string"}],"name":"shareEncryptionKey","outputs":[],"stateMutability":"nonpayable","type":"function"},
-    {"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},
-    {"inputs":[{"internalType":"bytes32","name":"fileId","type":"bytes32"},{"internalType":"string","name":"fileHash","type":"string"},{"internalType":"string","name":"fileName","type":"string"},{"internalType":"string","name":"encryptedKey","type":"string"}],"name":"uploadFile","outputs":[],"stateMutability":"nonpayable","type":"function"}
-]
-
+contract_address = Web3.to_checksum_address("0x020fa4b5e7704e7fdaa2b22f161920ec3df79e21")
+contract_abi = load_abi('ABI\contract_abi.json')
 # Access contract using the checksum address and correct ABI
 contract = w3.eth.contract(address=contract_address, abi=contract_abi)
 
@@ -167,16 +155,15 @@ def upload_file_to_blockchain(file_id_hex, file_hash, file_name, encrypted_key):
 
 # Function to grant access
 def grant_access():
-    selected_file = uploaded_files_list.get(tk.ACTIVE)
+    selected_file = file_tree.focus()
     if not selected_file:
         messagebox.showwarning("No File Selected", "Please select a file to grant access.")
         return
 
     recipient_address = simpledialog.askstring("Grant Access", "Enter Recipient Address:")
     if recipient_address:
-        file_id_hex = selected_file.split("File ID: ")[1]
+        file_id_hex = file_tree.item(selected_file)['values'][0]
         try:
-            # Check if the user is the owner before granting access
             if not contract.functions.owner().call() == account.address:
                 messagebox.showerror("Error", "Only the owner can grant access to the file!")
                 return
@@ -198,16 +185,15 @@ def grant_access():
 
 # Function to revoke access
 def revoke_access():
-    selected_file = uploaded_files_list.get(tk.ACTIVE)
+    selected_file = file_tree.focus()
     if not selected_file:
         messagebox.showwarning("No File Selected", "Please select a file to revoke access.")
         return
 
     recipient_address = simpledialog.askstring("Revoke Access", "Enter Recipient Address:")
     if recipient_address:
-        file_id_hex = selected_file.split("File ID: ")[1]
+        file_id_hex = file_tree.item(selected_file)['values'][0]
         try:
-            # Check if the user is the owner before revoking access
             if not contract.functions.owner().call() == account.address:
                 messagebox.showerror("Error", "Only the owner can revoke access to the file!")
                 return
@@ -229,14 +215,13 @@ def revoke_access():
 
 # Function to download a file
 def download_file():
-    selected_file = uploaded_files_list.get(tk.ACTIVE)
+    selected_file = file_tree.focus()
     if not selected_file:
         messagebox.showwarning("No File Selected", "Please select a file to download.")
         return
 
-    file_id_hex = selected_file.split("File ID: ")[1]
+    file_id_hex = file_tree.item(selected_file)['values'][0]
     try:
-        # Check if the user has access to the file before downloading
         can_access = contract.functions.canAccess(account.address, bytes.fromhex(file_id_hex)).call()
         if not can_access:
             messagebox.showerror("Error", "You do not have access to this file!")
@@ -244,7 +229,6 @@ def download_file():
 
         file_hash, encrypted_key = contract.functions.downloadFile(bytes.fromhex(file_id_hex)).call({'from': account.address})
 
-        # Decrypt the file and save it
         encrypted_file_path = os.path.join(ENCRYPTED_FILES_DIR, f"encrypted_{file_id_hex}")
         if not os.path.exists(encrypted_file_path):
             raise FileNotFoundError(f"No such file: {encrypted_file_path}")
@@ -286,7 +270,6 @@ def encrypt_and_upload_file():
             with open(encrypted_file_path, 'wb') as f:
                 f.write(encrypted_data)
 
-            # Generate signature
             private_key = SigningKey.generate(curve=SECP256k1).to_string()
             signature = sign_file(file_path, private_key, key)
             
@@ -314,20 +297,23 @@ def encrypt_and_upload_file():
 def display_uploaded_files():
     try:
         uploaded_files = contract.functions.getUploadedFiles().call()
-        uploaded_files_list.delete(0, tk.END)
+        for i in file_tree.get_children():
+            file_tree.delete(i)
         if uploaded_files:
             for file_id in uploaded_files:
-                uploaded_files_list.insert(tk.END, f"File ID: {file_id.hex()}")
+                file_metadata = contract.functions.getFileMetadata(file_id).call()
+                file_name, owner_address = file_metadata
+                file_tree.insert("", "end", values=(file_id.hex(), file_name, owner_address))
         else:
-            uploaded_files_list.insert(tk.END, "No files uploaded yet.")
+            status_label.config(text="No files uploaded yet.")
     except Exception as e:
         print(f"Error fetching uploaded files: {e}")
-        uploaded_files_list.insert(tk.END, "Error fetching uploaded files.")
+        status_label.config(text="Error fetching uploaded files.")
 
 # Create tkinter window
 window = tk.Tk()
 window.title("Secure File Sharing System")
-window.geometry("600x400")  # Set the window size
+window.geometry("800x500")  # Set the window size
 
 # Prompt user to enter their private key
 private_key = prompt_login()
@@ -364,9 +350,16 @@ revoke_button.grid(row=1, column=1, padx=10, pady=10)
 status_label = tk.Label(window, text="", font=("Arial", 12))
 status_label.pack(pady=10)
 
-# Add a listbox to show uploaded files
-uploaded_files_list = Listbox(window, height=10, width=80)
-uploaded_files_list.pack(pady=10)
+# Create a Treeview widget to show file name and owner address
+columns = ("file_id", "file_name", "owner_address")
+file_tree = ttk.Treeview(window, columns=columns, show='headings', height=10)
+file_tree.heading("file_id", text="File ID")
+file_tree.heading("file_name", text="File Name")
+file_tree.heading("owner_address", text="Owner Address")
+file_tree.column("file_id", width=200)
+file_tree.column("file_name", width=250)
+file_tree.column("owner_address", width=300)
+file_tree.pack(pady=10)
 
 # Initially load the uploaded files when the program starts
 display_uploaded_files()
