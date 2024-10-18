@@ -29,7 +29,7 @@ else:
 
 # Smart contract address and ABI (based on provided ABI)
 contract_address = Web3.to_checksum_address("0x020fa4b5e7704e7fdaa2b22f161920ec3df79e21")
-contract_abi = load_abi('ABI\contract_abi.json')
+contract_abi = load_abi('Contract\contract_abi.json')
 # Access contract using the checksum address and correct ABI
 contract = w3.eth.contract(address=contract_address, abi=contract_abi)
 
