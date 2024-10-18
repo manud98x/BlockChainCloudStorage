@@ -40,8 +40,8 @@ The app supports key functionalities like uploading encrypted files to the block
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/secure-file-sharing
-cd secure-file-sharing
+git clone https://github.com/manud98x/BlockChainCloudStorage
+cd BlockChainCloudStorage
 ```
 
 ### Step 2: Launch the Application
