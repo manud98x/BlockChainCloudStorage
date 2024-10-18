@@ -153,7 +153,6 @@ def upload_file_to_blockchain(file_id_hex, file_hash, file_name, encrypted_key):
         print(f"Error uploading file: {e}")
     return False
 
-# Function to grant access
 def grant_access():
     selected_file = file_tree.focus()
     if not selected_file:
@@ -164,10 +163,22 @@ def grant_access():
     if recipient_address:
         file_id_hex = file_tree.item(selected_file)['values'][0]
         try:
-            if not contract.functions.owner().call() == account.address:
-                messagebox.showerror("Error", "Only the owner can grant access to the file!")
+            # Get the file metadata (file name, owner address)
+            file_metadata = contract.functions.getFileMetadata(bytes.fromhex(file_id_hex)).call()
+            file_owner = Web3.to_checksum_address(file_metadata[1])  # The second element is the owner
+
+            # Ensure the current user is the file owner
+            user_address = Web3.to_checksum_address(account.address)
+
+            # Log for debugging purposes
+            print(f"File Owner: {file_owner}")
+            print(f"Your Address: {user_address}")
+
+            if file_owner != user_address:
+                messagebox.showerror("Error", "Only the file owner can grant access to the file!")
                 return
 
+            # Proceed with granting access if the current user is the file owner
             tx = contract.functions.grantAccess(recipient_address, bytes.fromhex(file_id_hex)).build_transaction({
                 'from': account.address,
                 'gas': 300000,
@@ -183,6 +194,7 @@ def grant_access():
             print(f"Grant access failed: {e}")
             messagebox.showerror("Error", f"Grant access failed: {e}")
 
+
 # Function to revoke access
 def revoke_access():
     selected_file = file_tree.focus()
@@ -194,7 +206,11 @@ def revoke_access():
     if recipient_address:
         file_id_hex = file_tree.item(selected_file)['values'][0]
         try:
-            if not contract.functions.owner().call() == account.address:
+            # Get the contract owner and ensure checksummed addresses
+            contract_owner = Web3.to_checksum_address(contract.functions.owner().call())
+            user_address = Web3.to_checksum_address(account.address)
+
+            if contract_owner != user_address:
                 messagebox.showerror("Error", "Only the owner can revoke access to the file!")
                 return
 
@@ -212,6 +228,7 @@ def revoke_access():
         except Exception as e:
             print(f"Revoke access failed: {e}")
             messagebox.showerror("Error", f"Revoke access failed: {e}")
+
 
 # Function to download a file
 def download_file():
