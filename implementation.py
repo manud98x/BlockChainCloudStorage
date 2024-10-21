@@ -207,10 +207,13 @@ def revoke_access():
         file_id_hex = file_tree.item(selected_file)['values'][0]
         try:
             # Get the contract owner and ensure checksummed addresses
-            contract_owner = Web3.to_checksum_address(contract.functions.owner().call())
+            file_metadata = contract.functions.getFileMetadata(bytes.fromhex(file_id_hex)).call()
+            file_owner = Web3.to_checksum_address(file_metadata[1])  # The second element is the owner
+
+            # Ensure the current user is the file owner
             user_address = Web3.to_checksum_address(account.address)
 
-            if contract_owner != user_address:
+            if file_owner != user_address:
                 messagebox.showerror("Error", "Only the owner can revoke access to the file!")
                 return
 
@@ -230,7 +233,6 @@ def revoke_access():
             messagebox.showerror("Error", f"Revoke access failed: {e}")
 
 
-# Function to download a file
 def download_file():
     selected_file = file_tree.focus()
     if not selected_file:
@@ -239,13 +241,23 @@ def download_file():
 
     file_id_hex = file_tree.item(selected_file)['values'][0]
     try:
+        # Log the current file ID for debugging purposes
+        print(f"Attempting to download file with ID: {file_id_hex}")
+
+        # Check if the current user has access to the file
         can_access = contract.functions.canAccess(account.address, bytes.fromhex(file_id_hex)).call()
+        print(f"Can access: {can_access}")  # Debug log
+
         if not can_access:
             messagebox.showerror("Error", "You do not have access to this file!")
             return
 
+        # Proceed with downloading the file
         file_hash, encrypted_key = contract.functions.downloadFile(bytes.fromhex(file_id_hex)).call({'from': account.address})
 
+        print(f"File hash: {file_hash}, Encrypted Key: {encrypted_key}")  # Log file details for debugging
+
+        # Decrypt the file and save it
         encrypted_file_path = os.path.join(ENCRYPTED_FILES_DIR, f"encrypted_{file_id_hex}")
         if not os.path.exists(encrypted_file_path):
             raise FileNotFoundError(f"No such file: {encrypted_file_path}")
@@ -351,18 +363,22 @@ else:
 button_frame = tk.Frame(window)
 button_frame.pack(pady=20)
 
+# Add User Id (logged-in user's address label)
+user_address_label = tk.Label(button_frame, text=f"Logged in as: {account.address}", font=("Arial", 12))
+user_address_label.grid(row=0, column=0, columnspan=2, pady=10)  # Place it above the buttons
+
 # Add buttons and labels
 encrypt_button = tk.Button(button_frame, text="Encrypt and Upload File", width=25, command=encrypt_and_upload_file)
-encrypt_button.grid(row=0, column=0, padx=10)
+encrypt_button.grid(row=1, column=0, padx=10)
 
 download_button = tk.Button(button_frame, text="Download File", width=25, command=download_file)
-download_button.grid(row=0, column=1, padx=10)
+download_button.grid(row=1, column=1, padx=10)
 
 grant_button = tk.Button(button_frame, text="Grant Access", width=25, command=grant_access)
-grant_button.grid(row=1, column=0, padx=10, pady=10)
+grant_button.grid(row=2, column=0, padx=10, pady=10)
 
 revoke_button = tk.Button(button_frame, text="Revoke Access", width=25, command=revoke_access)
-revoke_button.grid(row=1, column=1, padx=10, pady=10)
+revoke_button.grid(row=2, column=1, padx=10, pady=10)
 
 status_label = tk.Label(window, text="", font=("Arial", 12))
 status_label.pack(pady=10)
